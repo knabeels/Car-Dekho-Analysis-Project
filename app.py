@@ -1,57 +1,70 @@
-from flask import Flask, render_template, request
-import jsonify
-import requests
 import pickle
-import numpy as np
-import sklearn
+
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from sklearn.preprocessing import StandardScaler
 
-app = Flask(__name__)
-model = pickle.load(open('model.pkl', 'rb'))
-@app.route('/',methods=['GET'])
-def Home():
-    return render_template('index.html')
+# Initialize FastAPI app
+app = FastAPI()
 
+# Load ML model
+model = pickle.load(open("model.pkl", "rb"))
+
+# Templates (similar to Flask's render_template)
+templates = Jinja2Templates(directory="templates")
 
 standard_to = StandardScaler()
-@app.route("/predict", methods=['POST'])
-def predict():
-    Fuel_Type = 0
-    if request.method == 'POST':
-        Year = int(request.form['Year'])
-        Present_Price=float(request.form['Present_Price'])
-        Kms_Driven=int(request.form['Kms_Driven'])
-        Owner=int(request.form['Owner'])
-        Fuel_Type=request.form['Fuel_Type']
-        if (Fuel_Type == 'CNG'):
-            Fuel_Type = 0
-        elif(Fuel_Type == 'Diesel'):
-                Fuel_Type = 1
-        else:
-            Fuel_Type = 2
-        
-        Year = 2023-Year
-        
-        Seller_Type = request.form['Seller_Type']
-        if(Seller_Type == 'Individual'):
-            Seller_Type = 1
-        else:
-            Seller_Type = 0
-        
-        Transmission = request.form['Transmission']
-        if(Transmission == 'Manual'):
-            Transmission = 1
-        else:
-            Transmission = 0
-        prediction=model.predict([[Present_Price,Kms_Driven,Owner,Year,Fuel_Type,Seller_Type,Transmission]])
-        output=round(prediction[0],2)
-        if output<0:
-            return render_template('index.html',prediction_texts="Sorry you cannot sell this car")
-        else:
-            return render_template('index.html',prediction_text="You Can Sell The Car at {}".format(output))
+
+# Home route (renders index.html)
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+# Predict route
+@app.post("/predict", response_class=HTMLResponse)
+async def predict(
+    request: Request,
+    Year: int = Form(...),
+    Present_Price: float = Form(...),
+    Kms_Driven: int = Form(...),
+    Owner: int = Form(...),
+    Fuel_Type: str = Form(...),
+    Seller_Type: str = Form(...),
+    Transmission: str = Form(...)
+):
+    # Fuel type mapping
+    if Fuel_Type == "CNG":
+        Fuel_Type_val = 0
+    elif Fuel_Type == "Diesel":
+        Fuel_Type_val = 1
     else:
-        return render_template('index.html')
+        Fuel_Type_val = 2
 
-if __name__=="__main__":
-    app.run(debug=True)
+    # Adjust Year
+    Year_val = 2023 - Year
 
+    # Seller type mapping
+    Seller_Type_val = 1 if Seller_Type == "Individual" else 0
+
+    # Transmission mapping
+    Transmission_val = 1 if Transmission == "Manual" else 0
+
+    # Prediction
+    prediction = model.predict(
+        [[Present_Price, Kms_Driven, Owner, Year_val, Fuel_Type_val, Seller_Type_val, Transmission_val]]
+    )
+    output = round(prediction[0], 2)
+
+    # Response (render template with prediction)
+    if output < 0:
+        return templates.TemplateResponse(
+            "index.html",
+            {"request": request, "prediction_texts": "Sorry you cannot sell this car"},
+        )
+    else:
+        return templates.TemplateResponse(
+            "index.html",
+            {"request": request, "prediction_text": f"You Can Sell The Car at {output}"},
+        )
